@@ -4,8 +4,8 @@
 
 ## Regla fundamental
 
-**Nunca ejecutar nada contra `practica_bd2`.**  
-Toda operación debe apuntar a `practica_bd2_tp`.
+**Nunca ejecutar nada contra `Food_Store`.**  
+Toda operación debe apuntar a `Food_Store_Copia`.
 
 ---
 
@@ -37,7 +37,7 @@ COMMIT;
 Antes de ejecutar cualquier cambio estructural, crear un respaldo:
 
 ```bash
-pg_dump -U postgres -h localhost -p 5432 -F p -f ".\backups\practica_bd2_tp_backup.sql" practica_bd2_tp
+pg_dump -U postgres -h localhost -p 5432 -F p -f ".\db\backups\Food_Store_Copia_backup.sql" Food_Store_Copia
 ```
 
 El respaldo se almacena en `./backups/`. Este paso es obligatorio y previo a cualquier `ALTER TABLE`, `DROP`, o migración.

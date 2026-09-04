@@ -20,7 +20,7 @@ inclusion: manual
 ```sql
 -- ============================================================
 -- Script  : <nombre_descriptivo>.sql
--- Base    : practica_bd2_tp
+-- Base    : Food_Store_Copia
 -- Autor   : Saleme Ismael
 -- Fecha   : YYYY-MM-DD
 -- Desc    : <descripción breve en español>
@@ -32,7 +32,7 @@ inclusion: manual
 ```sql
 -- ============================================================
 -- Script  : <nombre>.sql
--- Base    : practica_bd2_tp
+-- Base    : Food_Store_Copia
 -- Autor   : Saleme Ismael
 -- Fecha   : YYYY-MM-DD
 -- Desc    : <descripción>
@@ -58,7 +58,7 @@ ROLLBACK; -- cambiar a COMMIT una vez verificado
 ```sql
 -- ============================================================
 -- Script  : <nombre>.sql
--- Base    : practica_bd2_tp
+-- Base    : Food_Store_Copia
 -- Autor   : Saleme Ismael
 -- Fecha   : YYYY-MM-DD
 -- Desc    : <descripción>
@@ -66,7 +66,7 @@ ROLLBACK; -- cambiar a COMMIT una vez verificado
 -- ============================================================
 
 -- pg_dump -U postgres -h localhost -p 5432 -F p
---   -f ".\backups\practica_bd2_tp_backup.sql" practica_bd2_tp
+--   -f ".\db\backups\practica_bd2_tp_backup.sql" Food_Store_Copia
 
 ALTER TABLE <tabla>
     ...;
