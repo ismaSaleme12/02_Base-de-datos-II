@@ -8,20 +8,20 @@ Todas las operaciones de este trabajo práctico se realizan sobre una copia de t
 
 La base original del proyecto es:
 
-`practica_bd2`
+`Food_Store`
 
 La copia utilizada para el trabajo práctico es:
 
-`practica_bd2_tp`
+`Food_Store_Copia`
 
 La copia se creó desde PostgreSQL utilizando:
 
 
-CREATE DATABASE practica_bd2_tp
-WITH TEMPLATE practica_bd2;
+CREATE DATABASE `Food_Store_Copia`
+WITH TEMPLATE `Food_Store`;
 
 
-De esta manera, `practica_bd2` se conserva como base original y las pruebas, modificaciones y experimentos del TP se realizan sobre `practica_bd2_tp`.
+De esta manera, `Food_Store` se conserva como base original y las pruebas, modificaciones y experimentos del TP se realizan sobre `Food_Store_Copia`.
 
 ===================================
 ## 2. Transacción
@@ -65,7 +65,7 @@ Antes de realizar cambios estructurales sobre la base de trabajo, como `ALTER`, 
 
 El respaldo se realizará sobre la copia de trabajo:
 
-`practica_bd2_tp`
+`Food_Store_Copia`
 
 El comando utilizado será:
 
@@ -82,7 +82,7 @@ El respaldo se realizará antes de cualquier modificación estructural para disp
 
 El procedimiento de seguridad utilizado durante el trabajo práctico será:
 
-1. Trabajar sobre `practica_bd2_tp` y no sobre `practica_bd2`.
+1. Trabajar sobre `Food_Store_Copia` y no sobre `Food_Store`.
 2. Probar las operaciones que modifican datos dentro de `BEGIN ... ROLLBACK` antes de confirmarlas.
 3. Realizar un `pg_dump` de la copia antes de cambios estructurales.
 4. Leer y revisar cualquier script generado por IA antes de ejecutarlo.
