@@ -2,7 +2,7 @@
 
 <p align="center">
   <b>Sistema Integral de Gestión de Base de Datos relacional para comercio gastronómico</b><br>
-  <i>Materia: Base de Datos II • ISMA</i>
+  <i>Materia: Base de Datos II • Ismael Saleme, Sabrina Gimenez, Jeronimo Coronel y Joaquin Godoy</i>
 </p>
 
 ---
