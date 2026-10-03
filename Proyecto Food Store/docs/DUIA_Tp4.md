@@ -3,7 +3,7 @@
 ## 1. Información General
 - **Trabajo Práctico:** Semana 4 — Reportes analíticos asistidos por IA sobre Food Store (Joins, subconsultas, agregación y ventana).
 - **Alumno:** Saleme Ismael
-- **Asignatura:** Base de Datos II (UTN - TUP a Distancia)
+- **Asignatura:** Base de Datos II
 - **Herramientas de IA utilizadas:** OpenCode / Modelos de asistencia de IA.
 
 ---
