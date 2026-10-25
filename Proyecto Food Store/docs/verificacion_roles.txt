@@ -1,0 +1,121 @@
+# Verificación de roles — Parte A (ejecución real 2026-10-05)
+## Base `practica_bd2_tp` (restaurada de Food_Store_Copia) · PostgreSQL 18.6 · usuario postgres
+
+Comandos:
+```sql
+\du
+SELECT rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole FROM pg_roles
+ WHERE rolname IN ('rol_app_lectura','rol_app_escritura','rol_soporte','rol_reportes','app_web','admin_datos') ORDER BY 1;
+SELECT r.rolname AS login, m.rolname AS grupo FROM pg_auth_members am
+ JOIN pg_roles r ON r.oid=am.member JOIN pg_roles m ON m.oid=am.roleid
+ WHERE r.rolname IN ('app_web','admin_datos') ORDER BY 1,2;
+SELECT grantee, table_name, privilege_type FROM information_schema.role_table_grants
+ WHERE grantee IN ('rol_app_lectura','rol_app_escritura','rol_soporte','rol_reportes','app_web','admin_datos')
+ ORDER BY 1,2,3;
+SELECT grantee, table_name, column_name, privilege_type FROM information_schema.role_column_grants
+ WHERE grantee IN ('rol_app_lectura','rol_reportes','rol_soporte') ORDER BY 1,2,3;
+```
+
+## Salida real
+
+### pg_roles (login y superuser)
+
+```
+      rolname      | rolcanlogin | rolsuper | rolcreatedb | rolcreaterole
+-------------------+-------------+----------+-------------+---------------
+ admin_datos       | t           | f        | f           | f
+ app_web           | t           | f        | f           | f
+ rol_app_escritura | f           | f        | f           | f
+ rol_app_lectura   | f           | f        | f           | f
+ rol_reportes      | f           | f        | f           | f
+ rol_soporte       | f           | f        | f           | f
+```
+
+Grupos = NOLOGIN, logins = LOGIN, ningún SUPERUSER. (\du muestra lo mismo;
+postgres es el único superuser.)
+
+### Membresías (pg_auth_members)
+
+```
+    login    |       grupo
+-------------+ -------------------
+ admin_datos | rol_soporte
+ app_web     | rol_app_escritura
+ app_web     | rol_app_lectura
+```
+
+Exactamente lo previsto en design §1.
+
+### role_table_grants (tablas y vistas)
+
+```
+     grantee     |             table_name             | privilege_type
+-----------------+------------------------------------+----------------
+ admin_datos     | v_detalle_pedido_con_producto      | SELECT
+ admin_datos     | v_pedidos_con_cliente              | SELECT
+ admin_datos     | v_productos_vigentes_con_categoria | SELECT
+ rol_app_lectura | v_detalle_pedido_con_producto      | SELECT
+ rol_app_lectura | v_pedidos_con_cliente              | SELECT
+ rol_app_lectura | v_productos_vigentes_con_categoria | SELECT
+ rol_soporte     | categoria                          | SELECT
+ rol_soporte     | cliente                            | SELECT
+ rol_soporte     | detalle_pedido                     | SELECT
+ rol_soporte     | pedido                             | SELECT
+ rol_soporte     | producto                           | SELECT
+```
+
+Nota: `rol_soporte` ya NO tiene `usuario` a nivel tabla (corrección del
+2026-10-05, ver abajo). `rol_reportes` no figura aquí porque sus privilegios
+sobre `usuario` son a nivel de COLUMNA (aparecen en role_column_grants) y la
+vista materializada no la lista `information_schema` (se verifica con
+`has_table_privilege`, ver abajo). `rol_app_escritura` no figura porque sólo
+tiene EXECUTE (no es privilegio de tabla).
+
+### role_column_grants (extracto usuario)
+
+```
+     grantee     | table_name | column_name | privilege_type
+-----------------+------------+-------------+----------------
+ rol_app_lectura | usuario    | fecha_alta  | SELECT
+ rol_app_lectura | usuario    | id          | SELECT
+ rol_app_lectura | usuario    | nombre      | SELECT
+ rol_app_lectura | usuario    | rol         | SELECT
+ rol_reportes    | usuario    | fecha_alta  | SELECT
+ rol_reportes    | usuario    | rol         | SELECT
+ rol_soporte     | usuario    | activo      | SELECT
+ rol_soporte     | usuario    | email       | SELECT
+ rol_soporte     | usuario    | fecha_alta  | SELECT
+ rol_soporte     | usuario    | id          | SELECT
+ rol_soporte     | usuario    | nombre      | SELECT
+ rol_soporte     | usuario    | rol         | SELECT
+```
+
+`password_hash` NO aparece para ningún rol de grupo: verificado.
+
+### Privilegios fuera de information_schema (has_* real)
+
+```
+ rep_lee_vm | rep_exec | esc_auth
+------------+----------+----------
+ t          | t        | t
+```
+
+`rol_reportes` lee `vm_facturacion_categoria_mes` y ejecuta
+`sp_refrescar_facturacion`; `rol_app_escritura` ejecuta `fn_autenticar`.
+
+### Criterios CA (SET ROLE real)
+
+- `SET ROLE app_web; SELECT * FROM cliente LIMIT 1;` → `ERROR: permiso denegado a la tabla cliente` ✅
+- `SET ROLE app_web; SELECT * FROM v_productos_vigentes_con_categoria LIMIT 1;` → 1 fila ✅
+- `SET ROLE app_web; GRANT admin_datos TO app_web;` → `ERROR: se ha denegado el permiso para otorgar el rol` ✅
+- `has_column_privilege('rol_soporte','usuario','password_hash','SELECT')` → `f` ✅
+
+## Hallazgo y corrección (constancia)
+
+La primera versión de `roles.sql` hacía `GRANT SELECT ON usuario TO rol_soporte`
++ `REVOKE SELECT (password_hash)`. La verificación real mostró que
+`password_hash` seguía accesible: en PostgreSQL el `REVOKE` por columna NO
+recorta un `GRANT` a nivel tabla. Se corrigió a `REVOKE ALL ON usuario` +
+`GRANT SELECT (id,nombre,email,rol,fecha_alta,activo)` (sin `password_hash`),
+y la re-ejecución confirmó `c_hash=f, c_email=t`. Este es el caso testigo de
+validación humana de la Parte A.

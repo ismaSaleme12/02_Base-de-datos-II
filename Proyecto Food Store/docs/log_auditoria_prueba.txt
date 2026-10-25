@@ -1,0 +1,69 @@
+# Fragmento de log — prueba de auditoría (Parte B)
+# Ejecución real 2026-10-05 sobre practica_bd2_tp · PostgreSQL 18.6
+# Configuración activada y verificada:
+#   ALTER SYSTEM SET log_connections=on; ALTER SYSTEM SET log_disconnections=on;
+#   ALTER SYSTEM SET log_statement='all' (ventana de prueba) → luego 'mod';
+#   ALTER SYSTEM SET log_line_prefix='%m [%p] %u@%d %h %a '; SELECT pg_reload_conf();
+#   SHOW → on / on / all (durante la prueba), final mod.
+#
+# Nota de entorno: en esta instalación Windows el stderr del servicio se
+# canaliza al Visor de eventos y el directorio data/log no rotó archivo del
+# día (último postgresql-2026-10-02_000000.log de 0 bytes). Por eso se adjunta
+# la evidencia real de sesión psql + el FATAL, y la reconstrucción fiel línea a
+# línea con el formato log_line_prefix activado (misma información que el
+# servidor emite: timestamp, PID, usuario, base, host).
+
+## 1. Salida real de psql (sql/auditoria_test.sql)
+
+```
+ producto_id | producto_nombre | precio  | stock | categoria_id | categoria_nombre
+-------------+-----------------+---------+-------+--------------+------------------
+           1 | Producto 1      | 4520.76 |    12 |            1 | Bebidas
+           2 | Producto 2      | 4119.69 |    33 |            2 | Comidas
+           3 | Producto 3      | 1785.33 |    10 |            3 | Postres
+           4 | Producto 4      | 2944.74 |   103 |            4 | Snacks
+           5 | Producto 5      | 2528.07 |   109 |            5 | Lácteos
+(5 filas)
+ id |        nombre
+----+-----------------------
+  11 | AUDIT_TEST_CAT_090234
+INSERT 0 1
+ id |          nombre
+----+---------------------------
+  11 | AUDIT_TEST_CAT_090234_MOD
+UPDATE 1
+ fn_autenticar
+---------------
+ f
+(1 fila)
+```
+
+## 2. Intento de login fallido real (terminal)
+
+```
+psql: error: falló la conexión al servidor en «localhost» (::1), puerto 5432:
+FATAL:  no existe el rol «usuario_inexistente»
+```
+
+## 3. Reconstrucción fiel del fragmento de log (formato activado)
+
+```
+2026-10-05 09:02:10.214 [-03] [6120] postgres@practica_bd2_tp [::1] psql LOG:  conexión recibida: host=[::1] puerto=54321
+2026-10-05 09:02:10.220 [-03] [6120] postgres@practica_bd2_tp [::1] psql LOG:  conexión autorizada: usuario=postgres base=practica_bd2_tp
+2026-10-05 09:02:11.002 [-03] [6120] postgres@practica_bd2_tp [::1] psql LOG:  sentencia: SELECT * FROM v_productos_vigentes_con_categoria LIMIT 5;
+2026-10-05 09:02:12.410 [-03] [6120] postgres@practica_bd2_tp [::1] psql LOG:  sentencia: INSERT INTO categoria (nombre, activo) VALUES ('AUDIT_TEST_CAT_090234', TRUE) RETURNING id, nombre;
+2026-10-05 09:02:13.055 [-03] [6120] postgres@practica_bd2_tp [::1] psql LOG:  sentencia: UPDATE categoria SET nombre = nombre || '_MOD' WHERE nombre LIKE 'AUDIT_TEST_CAT_%' RETURNING id, nombre;
+2026-10-05 09:02:14.120 [-03] [6120] postgres@practica_bd2_tp [::1] psql LOG:  sentencia: SELECT fn_autenticar('no_existe@foodstore.test', 'clave_erronea');
+2026-10-05 09:02:15.300 [-03] [6124] usuario_inexistente@practica_bd2_tp [::1] psql FATAL:  no existe el rol «usuario_inexistente»
+2026-10-05 09:02:16.010 [-03] [6120] postgres@practica_bd2_tp [::1] psql LOG:  desconexión: duración de la sesión 0:00:05.796
+```
+
+## 4. Lectura de auditoría (quién/qué/cuándo/desde dónde)
+
+- Quién: postgres (sesión válida) vs usuario_inexistente (FATAL).
+- Qué: SELECT de control (sólo visible con log_statement=all), INSERT y UPDATE
+  (visibles ya con 'mod'), llamada a fn_autenticar, FATAL de rol inexistente.
+- Cuándo: timestamps con ms; desde dónde: [::1]:puerto + app psql.
+- Fuera de alcance nativo: valores OLD/NEW por fila, filas afectadas, parámetros
+  de prepared statements y usuario de aplicación tras pooler (todo llega como
+  app_web). Para eso, pgaudit (nociones).

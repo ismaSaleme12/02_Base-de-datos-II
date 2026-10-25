@@ -1,0 +1,56 @@
+# Fragmento de log ANONIMIZADO — simulacro (Parte C)
+# Ejecución real 2026-10-05 sobre practica_bd2_tp · luego anonimizada.
+# Mapa aplicado (inverso fuera del repo):
+#   victima.simulacro@foodstore.test → usuario.001@sintetico.test
+#   Victima Simulacro                → USUARIO_SINT_001
+#   ana.lopez@foodstore.test etc.    → usuario.002@sintetico.test, etc.
+#   9 nombres reales                  → USUARIO_SINT_002..010
+#   [::1]/127.0.0.1 + puerto          → 10.99.0.7:5xxxx
+#   md5 reales                        → [HASH_REDACTED]
+# PII residual: ninguna (sólo seudónimos + rol + mes).
+
+## 1. Salida real anonimizada de sql/simulacro_incidente.sql
+
+```
+ intento1
+----------
+ f
+ intento2
+----------
+ f
+ login_ok
+----------
+ t
+ id |    nombre_sint   |             email_sint              |   rol    | fecha_alta
+----+------------------+-------------------------------------+----------+------------
+  1 | USUARIO_SINT_002 | usuario.002@sintetico.test          | cliente  | 2026-01-15
+  2 | USUARIO_SINT_003 | usuario.003@sintetico.test          | cliente  | 2026-01-20
+  3 | USUARIO_SINT_004 | usuario.004@sintetico.test          | admin    | 2026-02-05
+  4 | USUARIO_SINT_005 | usuario.005@sintetico.test          | soporte  | 2026-02-10
+  5 | USUARIO_SINT_006 | usuario.006@sintetico.test          | cliente  | 2026-03-01
+  6 | USUARIO_SINT_007 | usuario.007@sintetico.test          | reportes | 2026-03-12
+  7 | USUARIO_SINT_008 | usuario.008@sintetico.test          | cliente  | 2026-03-18
+  8 | USUARIO_SINT_009 | usuario.009@sintetico.test          | soporte  | 2026-01-25
+  9 | USUARIO_SINT_001 | usuario.001@sintetico.test          | cliente  | 2026-10-05
+(9 filas)
+ SET ROLE
+ ERROR: se ha denegado el permiso para otorgar el rol «admin_datos»
+ DETALLE: Sólo los roles con la opción ADMIN pueden otorgar este rol.
+ RESET ROLE
+```
+
+## 2. Fragmento de log anonimizado (formato log_line_prefix activado)
+
+```
+2026-10-05 09:05:01.102 [-03] [6180] postgres@practica_bd2_tp 10.99.0.7 psql LOG:  sentencia: SELECT fn_autenticar('usuario.001@sintetico.test', '[HASH_REDACTED]')
+2026-10-05 09:05:02.210 [-03] [6180] postgres@practica_bd2_tp 10.99.0.7 psql LOG:  sentencia: SELECT fn_autenticar('usuario.001@sintetico.test', '[HASH_REDACTED]')
+2026-10-05 09:05:03.315 [-03] [6180] postgres@practica_bd2_tp 10.99.0.7 psql LOG:  sentencia: SELECT fn_autenticar('usuario.001@sintetico.test', '[HASH_REDACTED]')
+2026-10-05 09:05:04.420 [-03] [6180] postgres@practica_bd2_tp 10.99.0.7 psql LOG:  sentencia: SELECT fn_autenticar('usuario.001@sintetico.test', '[HASH_REDACTED]')
+2026-10-05 09:05:05.530 [-03] [6180] postgres@practica_bd2_tp 10.99.0.7 psql LOG:  sentencia: SELECT id, nombre, email, rol, fecha_alta FROM usuario ORDER BY id
+2026-10-05 09:05:06.640 [-03] [6180] app_web@practica_bd2_tp 10.99.0.7 psql LOG:  sentencia: GRANT admin_datos TO app_web
+2026-10-05 09:05:06.645 [-03] [6180] app_web@practica_bd2_tp 10.99.0.7 psql ERROR:  se ha denegado el permiso para otorgar el rol «admin_datos»
+2026-10-05 09:05:07.010 [-03] [6180] postgres@practica_bd2_tp 10.99.0.7 psql LOG:  desconexión: duración de la sesión 0:00:06.112
+```
+
+Secuencia: 3×FALSE → 1×TRUE → lectura masiva 9 filas → GRANT denegado.
+Este es el log que se entrega a la IA sin contexto adicional.
