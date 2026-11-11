@@ -1,7 +1,212 @@
-# Food Store — BD II U3 S5 — Índices, vistas y vistas materializadas
+# Food Store — Base de Datos II
 
-**Autor:** Saleme Ismael — TUP UTN  
-**Motor:** PostgreSQL 16+ (probado en 18.6) — BD `Food_Store_Copia` (copia de `Food_Store`)
+**Autor:** Saleme Ismael — TUP UTN<br>
+**Motor:** PostgreSQL 17 (probado en 17.10) — BD `Food_Store_Copia` (copia de `Food_Store`)
+
+| Unidad | Tema | Dónde |
+|---|---|---|
+| U3 S5 | índices, vistas y vistas materializadas | §«Cómo reproducir las pruebas de esta entrega» (más abajo) |
+| **U8** | **la base de la tablet y el cierre de la capa de datos** | **§TP 8 (acá abajo)** |
+
+---
+
+# TP 8 — Food Store en la feria
+
+**Enunciado:** el food truck vende en una feria **sin señal**. La tablet guarda
+una copia del catálogo en SQLite y arma borradores de pedido. Cuando recupera
+conexión, el servidor decide si la venta se acepta.
+
+> **Regla de oro:** el móvil propone, el servidor dispone.
+> La tablet **nunca** escribe en PostgreSQL. `SIMULADO_APROBADO` **no es una venta.**
+
+## Orden de creación desde cero
+
+Cada paso depende del anterior. Si uno falla, no se sigue: el siguiente leería
+datos que no existen o que están mal.
+
+### Paso 0 — Prerrequisitos
+
+```powershell
+# PostgreSQL 17 con la base cargada
+$env:PGPASSWORD = "<password>"          # sólo en el entorno, nunca en un archivo
+$psql = "C:\Program Files\PostgreSQL\17\bin\psql.exe"
+
+& $psql -U postgres -h localhost -p 5432 -w -d Food_Store_Copia `
+        -tAc "select count(*) from producto;"     # debe dar 50000
+
+# SQLite 3.37+ (hace falta por las tablas STRICT)
+sqlite3 --version
+```
+
+Si `producto` no tiene 50.000 filas, primero hay que correr la carga masiva
+(`db/carga_masiva_datos - Tp3.sql`).
+
+### Paso 1 — Respaldo (protocolo del proyecto)
+
+```powershell
+& "C:\Program Files\PostgreSQL\17\bin\pg_dump.exe" -U postgres -h localhost -p 5432 -w `
+   -F p -f "db\backups\Food_Store_Copia_tp8_$(Get-Date -Format yyyyMMdd_HHmmss).sql" Food_Store_Copia
+```
+
+No se toca nada sin respaldo. Es la primera regla de `Protocolo_Seguridad.md`.
+
+### Paso 2 — Línea de base de los invariantes
+
+```powershell
+& $psql -U postgres -h localhost -p 5432 -w -d Food_Store_Copia -f "db\tp8_linea_base.sql"
+```
+
+Crea `tp8_linea_base` con `pedidos`, `detalles`, `stock_total`, `stock_huella`
+(md5 del vector `id:stock`) y `precio_huella`. **Es contra esto que se prueba, al
+final, que PostgreSQL no se movió.**
+
+### Paso 3 — Vista de exportación
+
+```powershell
+& $psql -U postgres -h localhost -p 5432 -w -d Food_Store_Copia -f "db\tp8_v_snapshot_movil.sql"
+```
+
+Crea `v_snapshot_movil`: precio en centavos, `disponible = activo AND stock > 0`,
+`eliminado = NOT activo`, `fecha_copia` sellada por el servidor.
+
+### Paso 4 — Exportar la instantánea
+
+```powershell
+$csv = (Resolve-Path "movil").Path.Replace('\','/') + "/servidor_snapshot.csv"
+"\copy (SELECT * FROM v_snapshot_movil) TO '$csv' CSV HEADER" |
+    & $psql -U postgres -h localhost -p 5432 -w -d Food_Store_Copia
+```
+
+Tiene que responder `COPY 50000`. El CSV trae los booleanos como `t`/`f` — eso
+es lo que hay que normalizar en el paso 7.
+
+### Paso 5 — Esquema de la tablet
+
+```powershell
+sqlite3 movil\foodstore_movil.db ".read movil\schema_sqlite.sql"
+```
+
+Crea las cuatro tablas `STRICT`: `producto_cache`, `pedido_borrador`,
+`item_borrador`, `cola_sync`.
+
+### Paso 6 — Tabla de aterrizaje
+
+```powershell
+sqlite3 movil\foodstore_movil.db ".read movil\schema_snapshot.sql"
+```
+
+**Este paso va antes del `.import`, no después.** Si `snapshot_servidor` no
+existe, `sqlite3` la crea usando la primera fila de datos como nombres de columna
+y se pierde un producto del catálogo.
+
+### Paso 7 — Importar y normalizar
+
+```powershell
+sqlite3 movil\foodstore_movil.db ".import --csv --skip 1 movil/servidor_snapshot.csv snapshot_servidor"
+sqlite3 movil\foodstore_movil.db ".read movil\cargar_snapshot.sql"
+```
+
+`cargar_snapshot.sql` hace tres cosas: controla qué llegó, normaliza `'t'/'f'`
+a `1/0` (sin esto, los motivos "dado de baja" y "no disponible" del semáforo
+nunca se disparan) y hace el UPSERT contra `producto_cache`.
+
+Debe cerrar con **50.000 en cache / 49.744 vendibles / 0 inconsistentes**.
+
+### Paso 8 — Semáforo
+
+```powershell
+sqlite3 movil\foodstore_movil.db ".read movil\semaforo.sql"
+```
+
+Resuelve cada solicitud `PENDIENTE` a `SIMULADO_APROBADO`, `CONFLICTO` o
+`RECHAZADO`. Correrlo dos veces no cambia nada (filtra por `PENDIENTE`).
+
+### Paso 9 — Los casos C2 a C6
+
+```powershell
+$env:PGPASSWORD = "<password>"
+.\movil\simular_casos.ps1 -Sqlite3 "C:\ruta\a\sqlite3.exe"
+```
+
+Orquesta la secuencia completa (borrador → cambio en el servidor → nueva
+instantánea → recarga → semáforo) y deja la evidencia en
+`movil/evidencias_casos.txt`. Los resultados esperados están en
+`docs/kiro/tasks.md §T2.6`.
+
+> Ojo: este script **modifica a propósito** el precio del producto 5 (C2) y el
+> estado del producto 6 (C4). Son los dos cambios intencionales del TP.
+
+### Paso 10 — Prueba de que PostgreSQL no cambió
+
+```powershell
+& $psql -U postgres -h localhost -p 5432 -w -d Food_Store_Copia -f "db\tp8_verificacion_final.sql"
+```
+
+Pedidos, detalles y stock tienen que dar **SIN CAMBIOS**. `precio_huella` tiene
+que dar **CAMBIÓ** — es el caso C2, y es la prueba de que el semáforo leyó y no
+escribió.
+
+### Paso 11 — Pruebas del esquema, sobre una base aparte
+
+```powershell
+sqlite3 movil\pruebas_aparte.db ".read movil\pruebas_sqlite.sql"
+```
+
+`pruebas_sqlite.sql` **borra las tablas al inicio**. Por eso se corre sobre una
+base descartable y nunca contra `foodstore_movil.db`.
+
+## Mapa de archivos del TP 8
+
+```
+Proyecto Food Store/
+├── db/
+│   ├── tp8_linea_base.sql                 # invariantes ANTES de empezar
+│   ├── tp8_v_snapshot_movil.sql           # la vista que exporta el catálogo
+│   ├── tp8_caso_c2_sube_precio.sql        # cambio deliberado de precio
+│   ├── tp8_caso_c4_baja_logica.sql        # baja lógica deliberada
+│   ├── tp8_verificacion_final.sql         # prueba de que nada se movió
+│   ├── tp8_code_review_verificaciones.sql # los 4 hallazgos, verificados
+│   └── backups/                           # pg_dump previo
+├── movil/
+│   ├── schema_sqlite.sql                  # las 4 tablas STRICT
+│   ├── pruebas_sqlite.sql                 # 1.c (base aparte)
+│   ├── schema_snapshot.sql                # bandeja de aterrizaje (no STRICT)
+│   ├── cargar_snapshot.sql                # normaliza t/f → 1/0 + UPSERT
+│   ├── semaforo.sql                       # 2.b
+│   ├── casos/                             # C2a, C2b, C3, C4, C5, C6
+│   ├── simular_casos.ps1                  # driver de la simulación
+│   ├── servidor_snapshot.csv              # instantánea real (50.000 filas)
+│   ├── snapshots/                         # instantáneas intermedias
+│   └── evidencias_casos.txt               # evidencia de la corrida final
+├── docs/
+│   ├── kiro/requirements.md               # 4.a — EARS
+│   ├── kiro/design.md                     # 4.a — diseño y decisiones
+│   ├── kiro/tasks.md                      # 4.a — lista ejecutable
+│   ├── bitacora_ia.md                     # 4.b
+│   ├── DUIA.md                            # 4.b
+│   ├── evidencias_code_review.txt         # 3.c — salida real
+│   └── informe.pdf                        # 1.a, 2.c, 3.a, 3.b, 3.c
+└── README.md                              # este archivo
+```
+
+## Lo que este TP demuestra
+
+1. **La tablet no puede confirmar nada.** No tiene conexión, credenciales ni
+   driver. El único canal es un CSV de una sola dirección.
+2. **El semáforo distingue cuatro rojos y un amarillo**, en orden de precedencia,
+   y el amarillo sólo aparece si no hay ningún rojo.
+3. **PostgreSQL no se movió**: pedidos y stock idénticos a la línea de base, con
+   huella md5. El precio sí cambió, y eso es lo que prueba que se leyó sin
+   escribir.
+4. **La idempotencia de la tablet no es la protección real.** La PK de
+   `cola_sync` protege la tabla local; la protección de negocio vive en el
+   servidor, dentro de la transacción (`docs/kiro/design.md §6`).
+5. **La base que dice ser la fuente de verdad no impide vender sin stock.**
+   Verificado: 999 unidades de un producto con stock 3 entran sin error (H4).
+
+---
+
+# U3 S5 — Índices, vistas y vistas materializadas
 
 ## Estructura del repositorio
 
